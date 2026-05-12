@@ -7,6 +7,11 @@ weights/
 # Identity database (generated at runtime)
 data/*.db
 data/*.index
+data/*.meta
+
+# Model weights in root (downloaded / cached)
+*.pt
+*.pth
 
 # Python
 __pycache__/
