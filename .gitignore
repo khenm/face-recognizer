@@ -30,6 +30,7 @@ results/
 Thumbs.db
 
 # IDE
+.hermes/
 .idea/
 .vscode/
 *.swp
