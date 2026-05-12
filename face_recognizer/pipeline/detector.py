@@ -70,7 +70,7 @@ class YOLOFaceDetector:
     def __init__(
         self,
         *,
-        model_name: str = "yolo26n.pt",
+        model_name: str = "models/yolo26n_tuned.pt",
         confidence_threshold: float = 0.5,
         iou_threshold: float = 0.45,
         device: str = "cpu",

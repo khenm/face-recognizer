@@ -41,13 +41,13 @@ def test_detector_constructor_defaults() -> None:
     from face_recognizer.pipeline.detector import YOLOFaceDetector
 
     detector = YOLOFaceDetector(
-        model_name="yolo26n.pt",
+        model_name="models/yolo26n_tuned.pt",
         confidence_threshold=0.5,
         iou_threshold=0.45,
         device="cpu",
         max_faces=5,
     )
-    assert detector.model_name == "yolo26n.pt"
+    assert detector.model_name == "models/yolo26n_tuned.pt"
     assert detector.confidence_threshold == 0.5
 
 
@@ -56,7 +56,7 @@ def test_detector_constructor_from_config_style() -> None:
     from face_recognizer.pipeline.detector import YOLOFaceDetector
 
     detector = YOLOFaceDetector(
-        model_name="yolo26n.pt",
+        model_name="models/yolo26n_tuned.pt",
         confidence_threshold=0.3,
         iou_threshold=0.5,
         device="cpu",
@@ -88,7 +88,7 @@ def test_detect_empty_image_returns_empty(blank_image: np.ndarray) -> None:
 
     # Use a mock to avoid downloading the real model
     detector = YOLOFaceDetector(
-        model_name="yolo26n.pt",
+        model_name="models/yolo26n_tuned.pt",
         confidence_threshold=0.5,
         device="cpu",
     )
@@ -121,7 +121,7 @@ def test_detect_with_mocked_boxes() -> None:
     mock_result.__len__ = lambda self: 1
 
     detector = YOLOFaceDetector(
-        model_name="yolo26n.pt",
+        model_name="models/yolo26n_tuned.pt",
         confidence_threshold=0.5,
         device="cpu",
     )
@@ -144,7 +144,7 @@ def test_detect_grayscale_auto_converts(grayscale_image: np.ndarray) -> None:
     from face_recognizer.pipeline.detector import YOLOFaceDetector
 
     detector = YOLOFaceDetector(
-        model_name="yolo26n.pt",
+        model_name="models/yolo26n_tuned.pt",
         confidence_threshold=0.5,
         device="cpu",
     )
@@ -178,7 +178,7 @@ def test_detect_filters_low_confidence() -> None:
     mock_result.__len__ = lambda self: 1
 
     detector = YOLOFaceDetector(
-        model_name="yolo26n.pt",
+        model_name="models/yolo26n_tuned.pt",
         confidence_threshold=0.5,
         device="cpu",
     )
@@ -213,7 +213,7 @@ def test_detect_respects_max_faces() -> None:
         mock_results.append(mr)
 
     detector = YOLOFaceDetector(
-        model_name="yolo26n.pt",
+        model_name="models/yolo26n_tuned.pt",
         confidence_threshold=0.5,
         max_faces=2,
         device="cpu",
@@ -246,7 +246,7 @@ def test_detect_crop_is_valid_subarray() -> None:
     mock_result.__len__ = lambda self: 1
 
     detector = YOLOFaceDetector(
-        model_name="yolo26n.pt",
+        model_name="models/yolo26n_tuned.pt",
         confidence_threshold=0.5,
         device="cpu",
     )
