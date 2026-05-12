@@ -1,171 +1,69 @@
-# PyTorch Training Template
+# Face Recognizer
 
-A clean, general-purpose PyTorch DDP/FSDP training template for deep learning research. Built around composable Hydra configs and the `_target_` instantiation pattern — every component (model, loss, optimizer, scheduler, dataloader, logger) is swappable via config without touching Python code.
-
-## Features
-
-- **Composable Hydra configs** — swap model, data, optimizer, and loss from the CLI with no code changes
-- **DDP + FSDP** — select strategy via `distributed.strategy: ddp|fsdp` in config
-- **`self.where` scheduler convention** — all schedulers take a single `float ∈ [0,1]` representing training progress; linear warmup → cosine decay out of the box
-- **Gradient accumulation** — `accum_steps` chunks batches and uses `model.no_sync()` to suppress redundant all-reduce
-- **AMP** — bfloat16/float16 via `torch.amp.autocast`; preprocessing runs in fp32
-- **Robust checkpointing** — backup-swap write pattern survives preemptions; auto-resumes from `checkpoint.pt`
-- **Per-module gradient clipping** — glob-pattern groups with full-coverage validation
-- **Glob-based module freezing** — patterns like `"*encoder*"` lock params and patch `.train()` permanently
-- **Rank-0 only I/O** — all saves, summaries, and TensorBoard writes are gated on rank 0
-
-## Installation
-
-Requires Python 3.10+ and [`uv`](https://github.com/astral-sh/uv).
-
-```bash
-git clone https://github.com/username/pytorch-template-code.git
-cd pytorch-template-code
-uv sync
-```
-
-## Project Structure
+Embeddable face recognition access-control server.  Detect → liveness
+(anti-spoofing) → align → embed → match against a SQLite + FAISS identity
+database.  Ready to embed into door locks, kiosks, or any system that
+needs to know *who* is at the door.
 
 ```text
-pytorch-template-code/
-├── configs/
-│   ├── train.yaml           # Primary entry point — composes all defaults
-│   ├── data/
-│   │   └── imagenet.yaml
-│   ├── model/
-│   │   └── resnet18.yaml
-│   ├── optim/
-│   │   ├── adamw.yaml       # AdamW + linear warmup → cosine LR
-│   │   └── sgd.yaml
-│   └── loss/
-│       └── focal_loss.yaml
-├── scripts/
-│   └── train.py             # Entrypoint
-├── src/
-│   ├── datasets/
-│   │   └── dummy.py         # DummyDataset for smoke-testing
-│   ├── losses/
-│   │   ├── focal.py         # FocalLoss
-│   │   └── generic.py       # CrossEntropy, MSE wrappers
-│   ├── models/
-│   │   └── model.py         # ResNet18Model
-│   ├── utils/
-│   │   ├── checkpoint.py    # CheckpointSaver + robust_torch_save
-│   │   ├── dist.py          # Distributed rank helpers
-│   │   ├── env.py           # Environment variable setup
-│   │   ├── freeze.py        # Glob-pattern module freezing
-│   │   ├── fsdp.py          # FSDP wrapping + mixed precision policy
-│   │   ├── general.py       # AverageMeter, copy_data_to_device, seeds, …
-│   │   ├── gradient_clip.py # Per-module GradientClipper
-│   │   ├── logging.py       # Rank-aware logging setup
-│   │   ├── optimizer.py     # OptimizerWrapper + construct_optimizers
-│   │   └── tensorboard_writer.py
-│   └── trainer.py           # Core DDP/FSDP Trainer
-├── notebooks/
-│   └── 01_eda_exploration.ipynb
-├── pyproject.toml
-└── uv.lock
+Camera → YOLO Detection → Liveness (MiniFASNet) → DFA Alignment → ArcFace Embedding → FAISS Match → Unlock
 ```
 
-## Usage
+## Quickstart (5 minutes)
 
-### Single-GPU
+**Prerequisites:** Python 3.10+, [uv](https://docs.astral.sh/uv/)
 
 ```bash
-uv run python scripts/train.py --config train
+# 1. Clone and install
+git clone <repo-url>
+cd face-recognizer
+uv sync
+
+# 2. Download model weights (~300 MB total)
+uv run python scripts/download_models.py
+
+# 3. Start the server
+uv run python scripts/serve.py
+
+# 4. Enroll a person (liveness ON by default — use a real camera)
+curl -F "name=Alice" -F "skip_liveness=true" -F "file=@alice.jpg" http://localhost:8000/enroll
+
+# 5. Recognize
+curl -F "file=@doorbell.jpg" http://localhost:8000/recognize
+# → {"matched":true,"name":"Alice","confidence":0.83,...}
 ```
 
-### Multi-GPU DDP
+## API
 
-```bash
-uv run torchrun --nproc_per_node=8 scripts/train.py --config train
-```
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `GET` | `/health` | Liveness probe |
+| `GET` | `/people` | List enrolled identities |
+| `DELETE` | `/people/{name}` | Remove a person |
+| `POST` | `/enroll` | Enroll a face (image + name, liveness on) |
+| `POST` | `/recognize` | Recognize a face (image → match) |
+| `POST` | `/calibrate` | Recalibrate match threshold |
 
-### Multi-GPU FSDP
+Full API reference: [`docs/api.md`](docs/api.md)
 
-```bash
-uv run torchrun --nproc_per_node=8 scripts/train.py --config train distributed.strategy=fsdp
-```
+## Architecture
 
-### Override config groups from the CLI
+| Stage | Model | Size | Purpose |
+|---|---|---|---|
+| Detect | YOLO26-Nano (WIDER Face) | 6 MB | Face bounding boxes |
+| Liveness | MiniFASNetV2SE | 7 MB | Anti-spoofing (photos/screens) |
+| Align | DFA mobilenet (HuggingFace) | 5 MB | Canonical 112×112 alignment |
+| Embed | IResNet-100 ArcFace (Glint360K) | 249 MB | 512-dim face vector |
+| Match | FAISS IndexFlatIP + SQLite | — | Cosine similarity search |
 
-```bash
-# Switch optimizer
-uv run torchrun --nproc_per_node=8 scripts/train.py --config train optim=sgd
-
-# Override individual values
-uv run torchrun --nproc_per_node=8 scripts/train.py --config train max_epochs=50 optim.optimizer.lr=1e-3
-```
+Latency: ~120 ms per frame (CPU, macOS aarch64).  Models are pre-loaded
+on startup — first request is as fast as the hundredth.
 
 ## Configuration
 
-`configs/train.yaml` is the single entry point. It composes defaults from four groups:
+Everything lives in one file: [`configs/config.yaml`](configs/config.yaml)
 
-```yaml
-defaults:
-  - data: imagenet
-  - model: resnet18
-  - optim: adamw
-  - loss: focal_loss
-  - _self_
+```bash
+# Override at startup
+uv run python scripts/serve.py server.port=9000 detector.device=mps
 ```
-
-Each group file is self-contained and fully `_target_`-driven — Hydra instantiates objects directly. To add a new variant, drop a new file in the relevant group directory.
-
-### Key top-level config keys
-
-| Key | Description |
-|-----|-------------|
-| `exp_name` | Experiment name; used in log/checkpoint paths |
-| `max_epochs` | Total training epochs |
-| `accum_steps` | Gradient accumulation steps |
-| `val_epoch_freq` | Run validation every N epochs |
-| `distributed.strategy` | `ddp` (default) or `fsdp` |
-| `checkpoint.resume_checkpoint_path` | Explicit resume path; if null, auto-discovers `checkpoint.pt` |
-| `optim.frozen_module_names` | List of glob patterns for modules to freeze |
-
-## Extending the Template
-
-### Adding a new model
-
-1. Create `src/models/my_model.py` with a plain `nn.Module` — no registry decorator needed.
-2. Add a config file `configs/model/my_model.yaml`:
-
-```yaml
-_target_: src.models.my_model.MyModel
-hidden_dim: 512
-num_layers: 6
-```
-
-3. Launch with `--config train model=my_model`.
-
-### Adding a new dataset
-
-1. Create `src/datasets/my_dataset.py` as a `torch.utils.data.Dataset`.
-2. Add `configs/data/my_dataset.yaml` with `_target_` pointing to your class.
-3. The Trainer wraps it in a `DistributedSampler` automatically.
-
-### Adding a new loss
-
-1. Create `src/losses/my_loss.py` as an `nn.Module` with a standard `forward(preds, targets)`.
-2. Add `configs/loss/my_loss.yaml` with `_target_`.
-
-### Customising the forward pass / loss computation
-
-Override `_model_inputs` and `_compute_loss` in a `Trainer` subclass:
-
-```python
-class MyTrainer(Trainer):
-    def _model_inputs(self, batch):
-        return {"images": batch["image"], "mask": batch["mask"]}
-
-    def _compute_loss(self, outputs, batch):
-        loss = self.loss_fn(outputs["logits"], batch["label"])
-        return {"loss": loss, "aux_loss": outputs["aux"]}
-```
-
----
-
-## Research Paper README Template
-
-If you are adapting this repository for a paper release, use the following template [PAPER.md](PAPER.md) to ensure clarity, rigor, and reproducibility.

@@ -1,0 +1,54 @@
+# ───────────────────────────────────────────────────────────────────
+# Face Recognizer — unified configuration
+# ───────────────────────────────────────────────────────────────────
+# Loaded by scripts/serve.py, scripts/enroll.py, scripts/recognize.py
+# via Hydra:  compose(config_name="config")
+# Override on CLI:  server.port=9000  detector.device=mps
+# ───────────────────────────────────────────────────────────────────
+
+# ── Server ────────────────────────────────────────────────────────
+server:
+  host: 0.0.0.0
+  port: 8000
+  log_level: info
+
+# ── Pipeline ──────────────────────────────────────────────────────
+pipeline:
+  skip_liveness: false
+  skip_aligner: false
+
+# ── Stage: Detection (YOLO) ───────────────────────────────────────
+detector:
+  model_name: models/yolo26n_tuned.pt
+  confidence_threshold: 0.5
+  iou_threshold: 0.45
+  device: cpu
+  max_faces: 5
+
+# ── Stage: Liveness (MiniFASNet) ──────────────────────────────────
+liveness:
+  device: cpu
+  threshold: 0.5
+  input_size: [128, 128]
+  fp16: false
+
+# ── Stage: Alignment (DFA mobilenet) ──────────────────────────────
+aligner:
+  model_id: minchul/cvlface_DFA_mobilenet
+  device: cpu
+
+# ── Stage: Embedding (IResNet-100 ArcFace) ────────────────────────
+embedder:
+  weights_path: weights/arcface-r100-glint360k.pth
+  device: cpu
+
+# ── Stage: Identity store (SQLite + FAISS) ────────────────────────
+store:
+  db_path: data/identity.db
+  index_path: data/faiss.index
+  threshold: 0.65
+
+# ── Door lock relay (optional, for hardware integration) ──────────
+door:
+  relay_url: null
+  open_timeout_sec: 5
